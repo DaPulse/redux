@@ -130,6 +130,7 @@ function createStore(reducer, preloadedState, enhancer) {
   var isDispatching = false;
   var isNotifyListenersNextFrame = false;
   var alreadyNotifingListenersOnNextFrame = false;
+  var hasVisibilityListener = false;
   /**
    * This makes a shallow copy of currentListeners so we can use
    * nextListeners as a temporary list while dispatching.
@@ -217,37 +218,61 @@ function createStore(reducer, preloadedState, enhancer) {
    * The state still keep changing between dispatches, only listeners (subscribers to store) don't run.
    * Set to true if listeners should be notified only once per frame.
    * Set to false (default) if listeners should be notified after every dispatch
+   * As requestAnimationFrame is disabled while tab is inactive, so in case it's in use,
+   * we'll use the other method when leaving the tab, and returning to it when the tab is active again
    */
 
 
   function setNotifyListenersOnNextFrame(shouldNotifyOnNextFrame) {
     isNotifyListenersNextFrame = shouldNotifyOnNextFrame;
+
+    if (shouldNotifyOnNextFrame && !hasVisibilityListener) {
+      hasVisibilityListener = true;
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === 'visible') {
+          alreadyNotifingListenersOnNextFrame = false;
+          setNotifyListenersOnNextFrame(true);
+        } else {
+          setNotifyListenersOnNextFrame(false);
+          notifyListeners();
+        }
+      });
+    }
+  }
+
+  function notifyListeners() {
+    var listeners = currentListeners = nextListeners;
+
+    for (var i = 0; i < listeners.length; i++) {
+      var listener = listeners[i];
+      listener();
+    }
   }
   /**
-   * Dispatches an action. It is the only way to trigger a state change.
-   *
-   * The `reducer` function, used to create the store, will be called with the
-   * current state tree and the given `action`. Its return value will
-   * be considered the **next** state of the tree, and the change listeners
-   * will be notified.
-   *
-   * The base implementation only supports plain object actions. If you want to
-   * dispatch a Promise, an Observable, a thunk, or something else, you need to
-   * wrap your store creating function into the corresponding middleware. For
-   * example, see the documentation for the `redux-thunk` package. Even the
-   * middleware will eventually dispatch plain object actions using this method.
-   *
-   * @param {Object} action A plain object representing “what changed”. It is
-   * a good idea to keep actions serializable so you can record and replay user
-   * sessions, or use the time travelling `redux-devtools`. An action must have
-   * a `type` property which may not be `undefined`. It is a good idea to use
-   * string constants for action types.
-   *
-   * @returns {Object} For convenience, the same action object you dispatched.
-   *
-   * Note that, if you use a custom middleware, it may wrap `dispatch()` to
-   * return something else (for example, a Promise you can await).
-   */
+  * Dispatches an action. It is the only way to trigger a state change.
+  *
+  * The `reducer` function, used to create the store, will be called with the
+  * current state tree and the given `action`. Its return value will
+  * be considered the **next** state of the tree, and the change listeners
+  * will be notified.
+  *
+  * The base implementation only supports plain object actions. If you want to
+  * dispatch a Promise, an Observable, a thunk, or something else, you need to
+  * wrap your store creating function into the corresponding middleware. For
+  * example, see the documentation for the `redux-thunk` package. Even the
+  * middleware will eventually dispatch plain object actions using this method.
+  *
+  * @param {Object} action A plain object representing “what changed”. It is
+  * a good idea to keep actions serializable so you can record and replay user
+  * sessions, or use the time travelling `redux-devtools`. An action must have
+  * a `type` property which may not be `undefined`. It is a good idea to use
+  * string constants for action types.
+  *
+  * @returns {Object} For convenience, the same action object you dispatched.
+  *
+  * Note that, if you use a custom middleware, it may wrap `dispatch()` to
+  * return something else (for example, a Promise you can await).
+  */
 
 
   function dispatch(action) {
@@ -268,15 +293,6 @@ function createStore(reducer, preloadedState, enhancer) {
       currentState = currentReducer(currentState, action);
     } finally {
       isDispatching = false;
-    }
-
-    function notifyListeners() {
-      var listeners = currentListeners = nextListeners;
-
-      for (var i = 0; i < listeners.length; i++) {
-        var listener = listeners[i];
-        listener();
-      }
     }
 
     if (isNotifyListenersNextFrame) {
