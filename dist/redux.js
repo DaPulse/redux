@@ -299,8 +299,9 @@ function createStore(reducer, preloadedState, enhancer) {
       if (!alreadyNotifingListenersOnNextFrame) {
         alreadyNotifingListenersOnNextFrame = true;
         window.requestAnimationFrame(function () {
-          notifyListeners();
+          // Allow notify listeners to be called again (on next frame) in case notifyListeners fire more actions
           alreadyNotifingListenersOnNextFrame = false;
+          notifyListeners();
         });
       }
     } else {
